@@ -1,0 +1,7 @@
+Brazilian reverse charge call detection
+
+app_collectcalldetect.c 
+Asterisk application for detection in media channel based on brazilian regulator technical norms
+
+r2collectcall.patch
+Block collect calls over brazilian R2 (R2D)
