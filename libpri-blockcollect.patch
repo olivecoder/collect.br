@@ -1,0 +1,85 @@
+diff -rup libpri-1.4.10.1-orig/pri_internal.h libpri-1.4.10.1-patched/pri_internal.h
+--- libpri-1.4.10.1-orig/pri_internal.h	2008-10-17 13:13:42.000000000 -0300
++++ libpri-1.4.10.1-patched/pri_internal.h	2009-07-20 15:50:21.000000000 -0300
+@@ -264,6 +264,10 @@ struct q931_call {
+ 
+ 	/* Bridged call info */
+ 	q931_call *bridged_call;        /* Pointer to other leg of bridged call */
++
++	/* MaresTelecom */
++	int hi_flag;
++	int reversecharge;
+ };
+ 
+ extern int pri_schedule_event(struct pri *pri, int ms, void (*function)(void *data), void *data);
+Only in libpri-1.4.10.1-patched/: pri_internal.h~
+diff -rup libpri-1.4.10.1-orig/q931.c libpri-1.4.10.1-patched/q931.c
+--- libpri-1.4.10.1-orig/q931.c	2009-03-04 17:31:20.000000000 -0300
++++ libpri-1.4.10.1-patched/q931.c	2009-07-20 16:04:28.000000000 -0300
+@@ -267,6 +267,7 @@ static void call_init(struct q931_call *
+ 	c->newcall = 1;
+ 	c->ourcallstate = Q931_CALL_STATE_NULL;
+ 	c->peercallstate = Q931_CALL_STATE_NULL;
++	c->reversecharge = 0;
+ }
+ 
+ static char *binary(int b, int len) {
+@@ -2141,6 +2142,23 @@ static FUNC_DUMP(dump_transit_count)
+ }
+ 
+ 
++/*
++  Reverse charge detection
++  MaresTelecom
++*/
++static FUNC_DUMP(dump_reverse_charge)
++{
++    pri_message(pri, "Reverse Charge Indication. CALL WILL BE REJECTED");
++}
++
++static FUNC_RECV(receive_reverse_charge) 
++{
++    call->reversecharge=1;
++    return 0;
++}
++
++
++
+ static struct ie ies[] = {
+ 	/* Codeset 0 - Common */
+ 	{ 1, NATIONAL_CHANGE_STATUS, "Change Status" },
+@@ -2157,7 +2175,7 @@ static struct ie ies[] = {
+ 	{ 1, Q931_BINARY_PARAMETERS, "Packet-layer Binary Parameters" },
+ 	{ 1, Q931_WINDOW_SIZE, "Packet-layer Window Size" },
+ 	{ 1, Q931_CLOSED_USER_GROUP, "Closed User Group" },
+-	{ 1, Q931_REVERSE_CHARGE_INDIC, "Reverse Charging Indication" },
++	{ 1, Q931_REVERSE_CHARGE_INDIC, "Reverse Charging Indication", dump_reverse_charge, receive_reverse_charge },
+ 	{ 1, Q931_CALLING_PARTY_NUMBER, "Calling Party Number", dump_calling_party_number, receive_calling_party_number, transmit_calling_party_number },
+ 	{ 1, Q931_CALLING_PARTY_SUBADDR, "Calling Party Subaddress", dump_calling_party_subaddr, receive_calling_party_subaddr },
+ 	{ 1, Q931_CALLED_PARTY_NUMBER, "Called Party Number", dump_called_party_number, receive_called_party_number, transmit_called_party_number },
+@@ -3104,8 +3122,7 @@ int q931_setup(struct pri *pri, q931_cal
+ 		c->redirectingreason = PRI_REDIR_UNKNOWN;
+ 	}
+ 	if (req->called) {
+-		libpri_copy_string(c->callednum, req->called, sizeof(c->callednum));
+-		c->calledplan = req->calledplan;
++ 		c->calledplan = req->calledplan;
+ 	} else
+ 		return -1;
+ 
+@@ -3545,6 +3562,13 @@ int q931_receive(struct pri *pri, q931_h
+ 		if (!c->newcall) {
+ 			break;
+ 		}
++
++		/* MaresTelecom - reverse charge blocking */
++		if (c->reversecharge) {
++		    q931_release_complete(pri, c, 23 ); // 23=REVERSE CHARGING REJECTED
++		    break;
++		}
++
+ 		if (c->progressmask & PRI_PROG_CALLER_NOT_ISDN)
+ 			c->nonisdn = 1;
+ 		c->newcall = 0;
+Only in libpri-1.4.10.1-patched/: q931.c~
+Only in libpri-1.4.10.1-patched/: q931.c.orig
